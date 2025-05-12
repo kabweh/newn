@@ -61,13 +61,14 @@ class AuthComponent:
                 st.subheader("Sign Up")
 
                 # Check if this is the first user registration
+                # Ensure database object is correctly accessed via auth_manager
                 is_first_user = self.auth_manager.database.count_users() == 0
 
                 if is_first_user:
                     st.info("Welcome! As the first user, you will be registered as an administrator. No invite code is needed.")
                     invite_token_required = False
                 else:
-                    st.info("Registration requires a valid invite code. Please contact an administrator if you don't have one.")
+                    st.info("Registration requires a valid invite code. Please contact an administrator if you don\'t have one.")
                     invite_token_required = True
 
                 new_username = st.text_input("Username", key="reg_username")
@@ -96,8 +97,11 @@ class AuthComponent:
                         )
 
                         if result["success"]:
-                            st.success(f"{result['message']} You can now log in.")
-                            # Use st.rerun() instead of experimental_rerun()
+                            st.success(f"{result["message"]} You can now log in.")
+                            # Tentative fix: Set st.session_state.user after successful registration
+                            # This makes the state similar to after a successful login before rerun.
+                            if "user" in result:
+                                st.session_state.user = result["user"]
                             st.rerun()
                         else:
                             st.error(result["message"])
@@ -109,20 +113,12 @@ class AuthComponent:
         if st.session_state.get("user"):
             user = st.session_state.user
 
-            st.write(f"Logged in as: **{user['username']}**")
+            st.write(f"Logged in as: **{user["username"]}**")
 
             # Display Admin status
-            is_admin = user.get('is_admin', False)
+            is_admin = user.get("is_admin", False)
             if is_admin:
                 st.success("Role: Administrator")
-
-            # Subscription status (Optional - kept from original)
-            # if user.get("subscription_active", False):
-            #     st.success("Subscription: Active")
-            #     if user.get("subscription_expires"):
-            #         st.write(f"Expires: {user['subscription_expires']}")
-            # else:
-            #     st.warning("Subscription: Inactive")
 
             # Logout button
             if st.button("Logout"):
@@ -131,7 +127,6 @@ class AuthComponent:
                 for key in keys_to_clear:
                     del st.session_state[key]
                 st.session_state.user = None # Ensure user is cleared
-                # Use st.rerun() instead of experimental_rerun()
                 st.rerun()
 
             # --- Admin Panel --- #
@@ -158,18 +153,17 @@ class AuthComponent:
                 generate_submitted = st.form_submit_button("Generate Invite")
 
                 if generate_submitted:
-                    user_id = st.session_state.user['id']
+                    user_id = st.session_state.user["id"]
                     result = self.auth_manager.generate_invite_link(user_id, invite_email or None, invite_days)
                     if result["success"]:
-                        st.success(f"Invite generated! Code: `{result['token']}`")
-                        # Rerun to refresh the list of active invites
+                        st.success(f"Invite generated! Code: `{result["token"]}`")
                         st.rerun()
                     else:
                         st.error(result["message"])
 
         # --- View Active Invites --- #
         st.sidebar.write("**Active Invite Codes**")
-        user_id = st.session_state.user['id']
+        user_id = st.session_state.user["id"]
         invites_result = self.auth_manager.get_active_invites(user_id)
 
         if invites_result["success"]:
@@ -180,27 +174,24 @@ class AuthComponent:
                 for invite in active_invites:
                     try:
                         # Parse ISO string, handle potential errors
-                        expires_dt = datetime.datetime.fromisoformat(str(invite['expires_at']))
+                        expires_dt = datetime.datetime.fromisoformat(str(invite["expires_at"]))
                         expires_str = expires_dt.strftime("%Y-%m-%d %H:%M")
                     except (ValueError, TypeError):
                         expires_str = "Invalid Date"
 
                     display_data.append({
-                        "Code": invite['token'],
-                        "Email": invite.get('email', 'N/A'),
+                        "Code": invite["token"],
+                        "Email": invite.get("email", "N/A"),
                         "Expires": expires_str
                     })
 
                 df = pd.DataFrame(display_data)
                 st.sidebar.dataframe(df, use_container_width=True)
-                # Add a copy button for convenience (requires streamlit-extras or similar)
-                # Consider adding functionality to revoke invites if needed
             else:
                 st.sidebar.info("No active invite codes found.")
         else:
-            st.sidebar.error(f"Could not load invites: {invites_result['message']}")
+            st.sidebar.error(f"Could not load invites: {invites_result["message"]}")
 
-    # Kept for potential future use, but not directly used in the main flow now
     def render_subscription_management(self) -> None:
         """
         Render the subscription management section (Placeholder).
@@ -208,26 +199,20 @@ class AuthComponent:
         """
         st.header("Subscription Management")
 
-        # Check if user is logged in
         if not st.session_state.get("user"):
             st.warning("Please log in to manage your subscription.")
             return
 
         user = st.session_state.user
 
-        # Display current subscription status
         if user.get("subscription_active", False):
             st.success("Your subscription is currently active.")
             if user.get("subscription_expires"):
-                st.write(f"Your subscription expires on: {user['subscription_expires']}")
-
-            # Renewal/Management options (placeholder)
+                st.write(f"Your subscription expires on: {user["subscription_expires"]}")
             st.subheader("Manage Subscription")
             st.write("Contact an administrator or visit the billing portal (link placeholder) to manage your subscription.")
         else:
-            st.warning("You don't have an active subscription.")
-
-            # Subscription options (placeholder)
+            st.warning("You don\'t have an active subscription.")
             st.subheader("Subscription Options")
             st.write("Contact an administrator or choose a plan below to activate your subscription.")
 
