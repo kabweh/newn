@@ -233,6 +233,23 @@ class Database:
         user = self.get_user_by_id(user_id)
         return user is not None and bool(user.get('is_admin', 0))
 
+    def count_users(self) -> int:
+        """
+        Count the total number of users in the database.
+
+        Returns:
+            The total number of users.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM users")
+            count = cursor.fetchone()[0]
+            return count
+        except sqlite3.Error as e:
+            print(f"Database error in count_users: {e}")
+            return 0 # Return 0 or raise error, depending on desired handling
+
     # Invite link methods
     def create_invite_link(self, created_by: int, email: Optional[str] = None, expires_in_days: int = 7) -> Tuple[int, str]:
         """
@@ -642,6 +659,7 @@ if __name__ == "__main__":
         pass # Keep db for inspection for now
 
     print("Database initialized.")
+    print(f"Total users: {db.count_users()}") # Test count_users
 
     # Test user operations
     user_id = db.add_user("testuser", "hashed_password", "test@example.com")
@@ -651,6 +669,7 @@ if __name__ == "__main__":
         print(f"Retrieved user: {retrieved_user}")
         is_admin = db.is_user_admin(user_id)
         print(f"Is user admin: {is_admin}")
+        print(f"Total users after add: {db.count_users()}") # Test count_users
     else:
         print("Failed to add user (likely already exists).")
         retrieved_user = db.get_user_by_username("testuser") # Try to get existing
