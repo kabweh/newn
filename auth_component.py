@@ -50,8 +50,8 @@ class AuthComponent:
                             # Store user in session state
                             st.session_state.user = result["user"]
                             st.success("Login successful!")
-                            # Use st.rerun() instead of experimental_rerun()
-                            st.rerun()
+                            # Use st.experimental_rerun() instead of st.rerun()
+                            st.experimental_rerun()
                         else:
                             st.error(result["message"])
 
@@ -61,7 +61,6 @@ class AuthComponent:
                 st.subheader("Sign Up")
 
                 # Check if this is the first user registration
-                # Ensure database object is correctly accessed via auth_manager
                 is_first_user = self.auth_manager.database.count_users() == 0
 
                 if is_first_user:
@@ -98,11 +97,8 @@ class AuthComponent:
 
                         if result["success"]:
                             st.success(f"{result["message"]} You can now log in.")
-                            # Tentative fix: Set st.session_state.user after successful registration
-                            # This makes the state similar to after a successful login before rerun.
-                            if "user" in result:
-                                st.session_state.user = result["user"]
-                            st.rerun()
+                            # Use st.experimental_rerun() instead of st.rerun()
+                            st.experimental_rerun()
                         else:
                             st.error(result["message"])
 
@@ -120,6 +116,14 @@ class AuthComponent:
             if is_admin:
                 st.success("Role: Administrator")
 
+            # Subscription status (Optional - kept from original)
+            # if user.get("subscription_active", False):
+            #     st.success("Subscription: Active")
+            #     if user.get("subscription_expires"):
+            #         st.write(f"Expires: {user["subscription_expires"]}")
+            # else:
+            #     st.warning("Subscription: Inactive")
+
             # Logout button
             if st.button("Logout"):
                 # Clear user-specific session state
@@ -127,7 +131,8 @@ class AuthComponent:
                 for key in keys_to_clear:
                     del st.session_state[key]
                 st.session_state.user = None # Ensure user is cleared
-                st.rerun()
+                # Use st.experimental_rerun() instead of st.rerun()
+                st.experimental_rerun()
 
             # --- Admin Panel --- #
             if is_admin:
@@ -157,7 +162,8 @@ class AuthComponent:
                     result = self.auth_manager.generate_invite_link(user_id, invite_email or None, invite_days)
                     if result["success"]:
                         st.success(f"Invite generated! Code: `{result["token"]}`")
-                        st.rerun()
+                        # Rerun to refresh the list of active invites
+                        st.experimental_rerun()
                     else:
                         st.error(result["message"])
 
@@ -187,11 +193,14 @@ class AuthComponent:
 
                 df = pd.DataFrame(display_data)
                 st.sidebar.dataframe(df, use_container_width=True)
+                # Add a copy button for convenience (requires streamlit-extras or similar)
+                # Consider adding functionality to revoke invites if needed
             else:
                 st.sidebar.info("No active invite codes found.")
         else:
             st.sidebar.error(f"Could not load invites: {invites_result["message"]}")
 
+    # Kept for potential future use, but not directly used in the main flow now
     def render_subscription_management(self) -> None:
         """
         Render the subscription management section (Placeholder).
@@ -199,20 +208,26 @@ class AuthComponent:
         """
         st.header("Subscription Management")
 
+        # Check if user is logged in
         if not st.session_state.get("user"):
             st.warning("Please log in to manage your subscription.")
             return
 
         user = st.session_state.user
 
+        # Display current subscription status
         if user.get("subscription_active", False):
             st.success("Your subscription is currently active.")
             if user.get("subscription_expires"):
                 st.write(f"Your subscription expires on: {user["subscription_expires"]}")
+
+            # Renewal/Management options (placeholder)
             st.subheader("Manage Subscription")
             st.write("Contact an administrator or visit the billing portal (link placeholder) to manage your subscription.")
         else:
             st.warning("You don\'t have an active subscription.")
+
+            # Subscription options (placeholder)
             st.subheader("Subscription Options")
             st.write("Contact an administrator or choose a plan below to activate your subscription.")
 
@@ -223,7 +238,7 @@ class AuthComponent:
                     st.session_state.user["subscription_active"] = True
                     st.session_state.user["subscription_expires"] = result["expires_at"]
                     st.success("Subscription activated successfully!")
-                    st.rerun()
+                    st.experimental_rerun()
                 else:
                     st.error(result["message"])
 
