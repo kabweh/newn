@@ -514,6 +514,192 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
+        try:
+            cursor.execute(
+                "UPDATE progress_reports SET emailed_to = ?, emailed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (emailed_to, report_id)
+            )
+            conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Database error in update_report_email_status: {e}")
+            return False
+
+    def get_user_quiz_history(self, user_id: int) -> List[Dict]:
+        """
+        Get the quiz history for a specific user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of dictionaries containing quiz attempt information
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
         cursor.execute(
-            "UPDATE progress_reports SET emailed_to = ?, e
-(Content truncated due to size limit. Use line ranges to read in chunks)
+            """
+            SELECT qa.id as attempt_id, q.title as quiz_title, qa.started_at, qa.completed_at, qa.score, qa.max_score
+            FROM quiz_attempts qa
+            JOIN quizzes q ON qa.quiz_id = q.id
+            WHERE qa.user_id = ?
+            ORDER BY qa.started_at DESC
+            """,
+            (user_id,)
+        )
+        attempts = cursor.fetchall()
+        return [dict(attempt) for attempt in attempts]
+
+    def get_user_progress_reports(self, user_id: int) -> List[Dict]:
+        """
+        Get all progress reports generated for a specific user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of dictionaries containing progress report information
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT * FROM progress_reports WHERE user_id = ? ORDER BY generated_at DESC",
+            (user_id,)
+        )
+        reports = cursor.fetchall()
+        return [dict(report) for report in reports]
+
+    def get_all_users(self) -> List[Dict]:
+        """
+        Get all users from the database (for admin purposes).
+
+        Returns:
+            List of dictionaries containing user information.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, email, created_at, subscription_active, subscription_expires, is_admin FROM users ORDER BY created_at DESC")
+        users = cursor.fetchall()
+        return [dict(user) for user in users]
+
+    def update_user_subscription(self, user_id: int, subscription_active: bool, subscription_expires: Optional[datetime.datetime] = None) -> bool:
+        """
+        Update a user's subscription status.
+
+        Args:
+            user_id: User ID
+            subscription_active: Boolean indicating if subscription is active
+            subscription_expires: Expiration date of the subscription (optional)
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE users SET subscription_active = ?, subscription_expires = ? WHERE id = ?",
+                (subscription_active, subscription_expires, user_id)
+            )
+            conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Database error updating user subscription: {e}")
+            return False
+
+    def delete_invite_link(self, invite_id: int) -> bool:
+        """
+        Delete an invite link by its ID.
+
+        Args:
+            invite_id: The ID of the invite link to delete.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM invite_links WHERE id = ?", (invite_id,))
+            conn.commit()
+            return cursor.rowcount > 0 # Check if any row was deleted
+        except sqlite3.Error as e:
+            print(f"Database error deleting invite link: {e}")
+            return False
+
+# Example usage (optional, for testing)
+if __name__ == "__main__":
+    db = Database(db_path="test_ai_tutor.db")
+    db.initialize_db() # Ensure tables are created
+
+    # Clean up the test database file if it exists
+    if os.path.exists("test_ai_tutor.db"):
+        # db.close_connection() # Close before deleting if open
+        # os.remove("test_ai_tutor.db")
+        # db = Database(db_path="test_ai_tutor.db") # Re-initialize for a clean test
+        pass # Keep db for inspection for now
+
+    print("Database initialized.")
+
+    # Test user operations
+    user_id = db.add_user("testuser", "hashed_password", "test@example.com")
+    if user_id != -1:
+        print(f"Added user with ID: {user_id}")
+        retrieved_user = db.get_user_by_username("testuser")
+        print(f"Retrieved user: {retrieved_user}")
+        is_admin = db.is_user_admin(user_id)
+        print(f"Is user admin: {is_admin}")
+    else:
+        print("Failed to add user (likely already exists).")
+        retrieved_user = db.get_user_by_username("testuser") # Try to get existing
+        if retrieved_user:
+            user_id = retrieved_user["id"]
+            print(f"Existing user ID: {user_id}")
+
+    # Test invite link operations (assuming user_id is valid)
+    if user_id and user_id != -1:
+        invite_id, token = db.create_invite_link(user_id, "invite@example.com")
+        print(f"Created invite link with ID: {invite_id}, Token: {token}")
+        active_invites = db.get_active_invites_by_creator(user_id)
+        print(f"Active invites for user {user_id}: {active_invites}")
+        # Simulate using an invite
+        # success_use = db.use_invite_link(token, user_id + 1 if user_id else 2) # Assuming another user ID
+        # print(f"Invite link used successfully: {success_use}")
+
+    # Test quiz operations
+    quiz_id = db.create_quiz("Test Quiz", "Sample material", user_id if user_id and user_id != -1 else None)
+    print(f"Created quiz with ID: {quiz_id}")
+    question_id = db.add_question(quiz_id, "What is 2+2?", "multiple_choice", "4", "[\"3\", \"4\", \"5\"]")
+    print(f"Added question with ID: {question_id}")
+    quiz_details = db.get_quiz_with_questions(quiz_id)
+    print(f"Quiz details: {quiz_details}")
+
+    # Test quiz attempt operations (assuming user_id is valid)
+    if user_id and user_id != -1:
+        attempt_id = db.start_quiz_attempt(quiz_id, user_id)
+        print(f"Started quiz attempt with ID: {attempt_id}")
+        response_id = db.record_question_response(attempt_id, question_id, "4", True)
+        print(f"Recorded response with ID: {response_id}")
+        db.complete_quiz_attempt(attempt_id, 1, 1)
+        print(f"Completed quiz attempt for ID: {attempt_id}")
+        history = db.get_user_quiz_history(user_id)
+        print(f"User quiz history: {history}")
+
+    # Test progress report operations (assuming user_id is valid)
+    if user_id and user_id != -1:
+        report_id = db.add_progress_report(user_id, "Monthly Report", "/path/to/report.pdf")
+        print(f"Added progress report with ID: {report_id}")
+        db.update_report_email_status(report_id, "parent@example.com")
+        print(f"Updated email status for report ID: {report_id}")
+        user_reports = db.get_user_progress_reports(user_id)
+        print(f"User progress reports: {user_reports}")
+
+    db.close_connection()
+    print("Database connection closed.")
+    # Clean up test database if you want to run fresh each time
+    # if os.path.exists("test_ai_tutor.db"):
+    #     os.remove("test_ai_tutor.db")
+    #     print("Test database removed.")
+
